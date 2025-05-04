@@ -1,0 +1,51 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
+    container_name: stoik-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - stoik-postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: "pg_isready -q -d ${POSTGRES_DB} -U ${POSTGRES_USER}"
+      interval: 30s
+      timeout: 10s
+      retries: 100
+      start_period: 40s
+      start_interval: 5s
+    ports:
+      - "5432:5432"
+    networks:
+      - stoiknet
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    container_name: stoik-redis
+    command:
+      - /bin/sh
+      - -c
+      - redis-server --requirepass "${REDIS_PASSWORD:-redis}"
+    volumes:
+      - stoik-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 100
+      start_period: 40s
+      start_interval: 5s
+    ports:
+      - "6379:6379"
+    networks:
+      - stoiknet
+
+networks:
+  stoiknet:
+volumes:
+  stoik-postgres-data:
+  stoik-redis-data:

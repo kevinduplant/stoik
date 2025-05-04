@@ -1,0 +1,16 @@
+config:
+  target: 'http://localhost:3000/shorten'
+  phases:
+    - duration: 600 # Run the test for 10 minutes
+      arrivalRate: 100 # Simulate 100 requests per second
+  payload:
+    path: "random-urls.csv"
+    fields:
+      - "url"
+
+scenarios:
+  - flow:
+      - post:
+          url: "/"
+          json:
+            url: "{{ url }}"
