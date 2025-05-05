@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
-import { buildUrlService } from "../services/urlService";
-import { buildPostgresClient } from "../clients/postgres";
-import { buildRedisClient } from "../clients/redis";
+import { buildUrlService } from "../services/urlService.js";
+import { buildPostgresClient } from "../clients/postgres.js";
+import { buildRedisClient } from "../clients/redis.js";
 
-const postgresClient = buildPostgresClient();
+const postgresClient = await buildPostgresClient();
 const redisClient = buildRedisClient();
 
 const urlService = buildUrlService({ postgresClient, redisClient });

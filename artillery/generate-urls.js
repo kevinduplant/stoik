@@ -1,7 +1,7 @@
 const fs = require("fs");
 const { faker } = require("@faker-js/faker");
 
-const NUM_URLS = 1000000; // Generate 1 million random URLs
+const NUM_URLS = 1000000; // Generate 10 million random URLs
 const FILE_PATH = "random-urls.csv";
 
 const urls = [];

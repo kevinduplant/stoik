@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { createShortUrl } from "./controllers/createShortUrl";
-import { redirectUrl } from "./controllers/redirectUrl";
+import { createShortUrl } from "./controllers/createShortUrl.js";
+import { redirectUrl } from "./controllers/redirectUrl.js";
 
 const router = Router();
 

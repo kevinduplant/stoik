@@ -2,7 +2,11 @@
   "name": "stoik-url-shortener-backend",
   "version": "1.0.0",
   "description": "Stoik URL shortener backend service",
-  "main": "handler.js",
+  "exports": "./index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node .build/src/server.js",
@@ -12,6 +16,7 @@
     "migrate:create": "node-pg-migrate create"
   },
   "dependencies": {
+    "bloom-filters": "^3.0.4",
     "cors": "^2.8.5",
     "dotenv": "^10.0.0",
     "express": "^5.1.0",
@@ -24,6 +29,7 @@
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
+    "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.1",
     "@types/he": "^1.2.3",
     "@types/node": "^22.15.3",

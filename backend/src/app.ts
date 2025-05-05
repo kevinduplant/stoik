@@ -1,12 +1,12 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import urlRoutes from "./routes";
+import urlRoutes from "./routes.js";
 import {
   closeDatabaseConnections,
   initDatabaseConnections,
   initDatabaseTables,
-} from "./clients/postgres";
+} from "./clients/postgres.js";
 
 const app = express();
 

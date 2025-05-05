@@ -1,6 +1,6 @@
-import { PostgresClient } from "../clients/postgres";
-import { RedisClient } from "../clients/redis";
-import { generateShortId } from "../utils/encoder";
+import { PostgresClient } from "../clients/postgres.js";
+import { RedisClient } from "../clients/redis.js";
+import { generateShortId } from "../utils/encoder.js";
 
 interface UrlServiceDependencies {
   postgresClient: PostgresClient;
@@ -69,6 +69,11 @@ export function buildUrlService(
 
   async function checkShortIdExists(shortId: string): Promise<boolean> {
     const result = await postgresClient.findByShortId(shortId);
+
+    if (!result) {
+      return false;
+    }
+
     return result.rows.length > 0;
   }
 
@@ -83,7 +88,7 @@ export function buildUrlService(
     // If not in cache, query from PostgreSQL
     const result = await postgresClient.findOriginalUrlByShortId(shortId);
 
-    if (result.rows.length > 0) {
+    if (result && result.rows.length > 0) {
       const originalUrl = result.rows[0].original_url;
 
       // Update cache for future requests

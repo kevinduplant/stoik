@@ -1,13 +1,13 @@
 import { Request, Response } from "express";
-import { buildUrlService } from "../services/urlService";
-import { buildPostgresClient } from "../clients/postgres";
-import { buildRedisClient } from "../clients/redis";
-import config from "../config";
+import { buildUrlService } from "../services/urlService.js";
+import { buildPostgresClient } from "../clients/postgres.js";
+import { buildRedisClient } from "../clients/redis.js";
+import config from "../config.js";
 import z from "zod";
 import he from "he";
 import QRCode from "qrcode";
 
-const postgresClient = buildPostgresClient();
+const postgresClient = await buildPostgresClient();
 const redisClient = buildRedisClient();
 
 const urlService = buildUrlService({ postgresClient, redisClient });

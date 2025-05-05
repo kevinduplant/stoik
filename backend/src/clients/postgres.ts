@@ -1,10 +1,13 @@
+import bloomFilters from "bloom-filters";
 import { Pool, QueryResult } from "pg";
 
+const { BloomFilter } = bloomFilters;
+
 export interface PostgresClient {
-  insert: (shortId: string, originalUrl: string) => Promise<QueryResult>;
-  findByShortId: (shortId: string) => Promise<QueryResult>;
-  findOriginalUrlByShortId: (shortId: string) => Promise<QueryResult>;
-  updateClickCountByShortId: (shortId: string) => Promise<QueryResult>;
+  insert: (shortId: string, originalUrl: string) => Promise<QueryResult | void>;
+  findByShortId: (shortId: string) => Promise<QueryResult | void>;
+  findOriginalUrlByShortId: (shortId: string) => Promise<QueryResult | void>;
+  updateClickCountByShortId: (shortId: string) => Promise<QueryResult | void>;
   findShortIdByOriginalUrl: (
     originalUrl: string
   ) => Promise<{ short_id: string }[]>;
@@ -70,12 +73,25 @@ function generatePoolConfig(): PoolConfig {
     };
   });
 
+  poolConfig["default"] = {
+    host: process.env.POSTGRES_HOST || "localhost",
+    port: parseInt(process.env.POSTGRES_PORT || "5432"),
+    database: `urls_default`,
+    user: process.env.POSTGRES_USER || "postgres",
+    password: process.env.POSTGRES_PASSWORD || "postgres",
+  };
+
   return poolConfig;
 }
 
 const shardConfigs = generatePoolConfig();
 
 const shardPools: Record<string, Pool> = {};
+
+const bloom = new BloomFilter(
+  10 * 1024 * 1024 * 8, // ~10MB of memory
+  7 // num hashes
+);
 
 export async function initDatabaseTables(): Promise<void> {
   for (const [shard, pool] of Object.entries(shardPools)) {
@@ -94,7 +110,6 @@ export async function initDatabaseTables(): Promise<void> {
 
         CREATE INDEX IF NOT EXISTS idx_urls_original_url ON urls (original_url);
       `);
-      console.log(`Tables initialized for shard ${shard}`);
     } catch (error) {
       console.error(`Failed to initialize tables for shard ${shard}:`, error);
     }
@@ -119,7 +134,7 @@ export function initDatabaseConnections(): void {
       database: config.database,
       user: config.user,
       password: config.password,
-      max: 20, // Maximum number of clients in the pool
+      max: parseInt(process.env.MAX_POOL_SIZE || "20", 10),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 2000,
     });
@@ -138,6 +153,34 @@ export function initDatabaseConnections(): void {
       }
     });
   }
+
+  loadBloomFilter();
+}
+
+export async function loadBloomFilter(): Promise<void> {
+  console.log("Load bloom filter");
+  const rows: { original_url: string }[] = [];
+
+  await Promise.all(
+    Object.values(shardPools).map(async (pool) => {
+      try {
+        const result = await pool.query("SELECT original_url FROM urls");
+
+        if (result) {
+          rows.push(...result.rows);
+        }
+      } catch (error) {
+        console.error("Error querying shard:", error);
+        throw error;
+      }
+    })
+  );
+
+  rows.forEach((row) => {
+    bloom.add(row.original_url);
+  });
+
+  console.log("Bloom filter loaded with original URLs");
 }
 
 export async function closeDatabaseConnections(): Promise<void> {
@@ -145,7 +188,7 @@ export async function closeDatabaseConnections(): Promise<void> {
   console.log("All database connections closed");
 }
 
-export function buildPostgresClient(): PostgresClient {
+export async function buildPostgresClient(): Promise<PostgresClient> {
   return {
     insert,
     findByShortId,
@@ -157,47 +200,48 @@ export function buildPostgresClient(): PostgresClient {
   async function insert(
     shortId: string,
     originalUrl: string
-  ): Promise<QueryResult> {
+  ): Promise<QueryResult | void> {
     const pool = getPoolForShortId(shortId);
-    const client = await pool.connect();
+
+    bloom.add(originalUrl);
 
     try {
-      return await client.query(
+      return pool.query(
         "INSERT INTO urls (short_id, original_url, created_at) VALUES ($1, $2, NOW())",
         [shortId, originalUrl]
       );
-    } finally {
-      client.release();
+    } catch (error) {
+      console.error("Error inserting URL:", error);
+      throw error;
     }
   }
 
-  async function findByShortId(shortId: string): Promise<QueryResult> {
+  async function findByShortId(shortId: string): Promise<QueryResult | void> {
     const pool = getPoolForShortId(shortId);
-    const client = await pool.connect();
 
     try {
-      return await client.query(
-        "SELECT 1 FROM urls WHERE short_id = $1 LIMIT 1",
-        [shortId]
-      );
-    } finally {
-      client.release();
+      return pool.query("SELECT 1 FROM urls WHERE short_id = $1 LIMIT 1", [
+        shortId,
+      ]);
+    } catch (error) {
+      console.error("Error finding short ID:", error);
+      throw error;
     }
   }
 
   async function findOriginalUrlByShortId(
     shortId: string
-  ): Promise<QueryResult> {
+  ): Promise<QueryResult | void> {
     const pool = getPoolForShortId(shortId);
-    const client = await pool.connect();
 
     try {
-      return await client.query(
+      return pool.query(
         "SELECT original_url FROM urls WHERE short_id = $1 LIMIT 1",
         [shortId]
       );
-    } finally {
-      client.release();
+    } catch (error) {
+      console.error("Error finding original URL by short ID:", error);
+      throw error;
     }
   }
 
@@ -209,15 +253,15 @@ export function buildPostgresClient(): PostgresClient {
 
     await Promise.all(
       Object.values(shardPools).map(async (pool) => {
-        const client = await pool.connect();
-
         try {
-          const result = await client.query(query, params);
-          allResults.push(...result.rows);
+          const result = await pool.query(query, params);
+
+          if (result) {
+            allResults.push(...result.rows);
+          }
         } catch (error) {
           console.error("Error querying shard:", error);
-        } finally {
-          client.release();
+          throw error;
         }
       })
     );
@@ -228,6 +272,10 @@ export function buildPostgresClient(): PostgresClient {
   async function findShortIdByOriginalUrl(
     originalUrl: string
   ): Promise<{ short_id: string }[]> {
+    if (!bloom.has(originalUrl)) {
+      return [];
+    }
+
     return await queryAllShards(
       "SELECT short_id FROM urls WHERE original_url = $1 LIMIT 1",
       [originalUrl]
@@ -236,17 +284,17 @@ export function buildPostgresClient(): PostgresClient {
 
   async function updateClickCountByShortId(
     shortId: string
-  ): Promise<QueryResult> {
+  ): Promise<QueryResult | void> {
     const pool = getPoolForShortId(shortId);
-    const client = await pool.connect();
 
     try {
-      return await client.query(
+      return pool.query(
         "UPDATE urls SET click_count = click_count + 1 WHERE short_id = $1",
         [shortId]
       );
-    } finally {
-      client.release();
+    } catch (error) {
+      console.error("Error updating click count for short ID:", error);
+      throw error;
     }
   }
 }

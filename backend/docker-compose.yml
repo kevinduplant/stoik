@@ -44,6 +44,28 @@ services:
     networks:
       - stoiknet
 
+  redis-queue:
+    image: redis:alpine
+    restart: unless-stopped
+    container_name: stoik-redis
+    command:
+      - /bin/sh
+      - -c
+      - redis-server --requirepass "${REDIS_PASSWORD:-redis}"
+    volumes:
+      - stoik-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 100
+      start_period: 40s
+      start_interval: 5s
+    ports:
+      - "6380:6379"
+    networks:
+      - stoiknet
+
 networks:
   stoiknet:
 volumes:
